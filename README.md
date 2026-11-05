@@ -4,6 +4,7 @@ React (Vite) console for working with **alerts** in the [Hummingbird](https://do
 It talks to the Spring Boot server in [hummingbird-backend](https://github.com/sergyst/hummingbird-backend) via `/api`.
 
 ## Pages
+* **Overview** – dashboard with stats and recent alerts.
 * **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, refresh, and submit-new-alert.
 * **Scenarios** – plays a fictional customer's activity through a simulated bank monitoring system and shows what Hummingbird would (not) receive:
 
