@@ -7,7 +7,8 @@ It talks to the Spring Boot server in [hummingbird-backend](https://github.com/s
 * **Overview** – dashboard with stats and recent alerts.
 * **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, refresh, and submit-new-alert.
 * **Cases** – cases Hummingbird created from your alerts (`GET /api/cases`, default workflow `triage`), with "Load more"
-  paging. Click a row for the case details and its reviews (`GET /api/cases/{token}`, `GET /api/reviews?case_token=`), or use
+  paging. Workflow, stage and status per case aren't in the list response, so each listed case is fetched in the
+  background (4 at a time, cached) and its active review fills those columns in. Click a row for the case details and its reviews (`GET /api/cases/{token}`, `GET /api/reviews?case_token=`), or use
   **View case** in an alert's drawer. The backend passes Hummingbird's JSON through unchanged; the page follows the
   documented shapes (case list items are `{cursor, case:{token, created_at, updated_at}}`; the case detail has `reviews`,
   `decisions` and `filings`) and every case has a *Raw response* section.

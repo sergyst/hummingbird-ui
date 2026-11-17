@@ -25,6 +25,18 @@ function ReviewStatus({ value }) {
   )
 }
 
+const DONE = new Set(['COMPLETED', 'CANCELLED', 'APPROVED'])
+
+/** The review that best describes where a case stands: the first still-active one, else the latest. */
+function summarize(kase) {
+  const reviews = kase?.reviews || []
+  if (reviews.length === 0) return null
+  const active = reviews.find((r) => !DONE.has(String(r.status || '').toUpperCase()))
+  return { review: active || reviews[reviews.length - 1], count: reviews.length, name: kase.name }
+}
+
+const CONCURRENCY = 4
+
 export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
   const toast = useToast()
   const [workflow, setWorkflow] = useState('triage')
@@ -34,6 +46,38 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
   const [cursor, setCursor] = useState(null)
   const [loading, setLoading] = useState(false)
   const reqId = useRef(0)
+  const [details, setDetails] = useState({}) // token -> { key, case } | { key, error }
+  const inFlight = useRef(new Set())
+
+  // The list response has no workflow/status, so fetch each listed case (a few at a time) and cache it.
+  // The cache key includes updated_at, so a case that changed is re-fetched on the next refresh.
+  useEffect(() => {
+    if (!items) return
+    const todo = items.filter((c) => {
+      const key = `${c.token}|${c.updated_at}`
+      return details[c.token]?.key !== key && !inFlight.current.has(key)
+    })
+    if (todo.length === 0) return
+    let alive = true
+    const queue = [...todo]
+    const worker = async () => {
+      while (alive && queue.length) {
+        const c = queue.shift()
+        const key = `${c.token}|${c.updated_at}`
+        inFlight.current.add(key)
+        try {
+          const r = await api.getCase(c.token)
+          if (alive) setDetails((d) => ({ ...d, [c.token]: { key, case: r.case } }))
+        } catch (e) {
+          if (alive) setDetails((d) => ({ ...d, [c.token]: { key, error: e.message } }))
+        } finally {
+          inFlight.current.delete(key)
+        }
+      }
+    }
+    for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) worker()
+    return () => { alive = false }
+  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const load = useCallback(async (after = null) => {
     const mine = ++reqId.current
@@ -94,15 +138,31 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
         ) : (
           <div className="table-wrap">
             <table style={{ opacity: loading ? 0.6 : 1, transition: 'opacity .12s' }}>
-              <thead><tr><th>Case</th><th>Created</th><th>Updated</th></tr></thead>
+              <thead><tr><th>Case</th><th>Workflow</th><th>Stage</th><th>Status</th><th>Created</th><th>Updated</th></tr></thead>
               <tbody>
-                {items.map((c) => (
-                  <tr key={c.token} onClick={() => onOpen(c.token)}>
-                    <td><div className="cell-main"><code>{c.token}</code></div></td>
-                    <td className="muted" title={c.created_at}>{timeAgo(c.created_at)}</td>
-                    <td className="muted" title={c.updated_at}>{timeAgo(c.updated_at)}</td>
-                  </tr>
-                ))}
+                {items.map((c) => {
+                  const d = details[c.token]
+                  const sum = d?.case ? summarize(d.case) : null
+                  const pending = !d
+                  return (
+                    <tr key={c.token} onClick={() => onOpen(c.token)}>
+                      <td>
+                        <div className="cell-main">{d?.case?.name || <code>{c.token}</code>}</div>
+                        {d?.case?.name && <div className="cell-sub"><code>{c.token}</code></div>}
+                      </td>
+                      <td>{pending ? <Spinner /> : sum?.review?.workflow || <span className="muted">—</span>}
+                        {sum && sum.count > 1 && <span className="muted" title={`${sum.count} reviews`}> · {sum.count} reviews</span>}
+                      </td>
+                      <td>{pending ? '' : sum?.review?.stage || <span className="muted">—</span>}</td>
+                      <td>
+                        {pending ? '' : d.error ? <span className="muted" title={d.error}>unavailable</span>
+                          : sum ? <ReviewStatus value={sum.review.status} /> : <span className="muted">no review yet</span>}
+                      </td>
+                      <td className="muted" title={c.created_at}>{timeAgo(c.created_at)}</td>
+                      <td className="muted" title={c.updated_at}>{timeAgo(c.updated_at)}</td>
+                    </tr>
+                  )
+                })}
               </tbody>
             </table>
           </div>
