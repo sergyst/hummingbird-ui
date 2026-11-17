@@ -1,54 +1,28 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '../api'
-import { CopyField, EmptyState, Icon, Spinner, formatDateTime, timeAgo, useToast } from '../ui'
+import { CopyField, EmptyState, Icon, Spinner, formatDateTime, formatMoney, timeAgo, useToast } from '../ui'
 
-// The backend returns Hummingbird's JSON unchanged, so the helpers below read it defensively:
-// a list may be a bare array or sit under cases / reviews / data / items / results / edges.
+// Shapes below follow the Hummingbird API reference (apiVersion 2026-02-05); the backend passes them through unchanged.
+//   GET /cases           -> { success, cases: [{ cursor, case: { token, created_at, updated_at } }],
+//                             page_info: { end_cursor, has_next_page, ... } }          (params: first, after, workflow)
+//   GET /cases/{token}   -> { success, case: { token, id, name, created_at, updated_at, reviews: [...], filings: [...] } }
+//   GET /reviews         -> { reviews: [{ token, case_token, status, stage: {title}, queue: {name}, assignee: {name}, ... }],
+//                             next_page_token }                                         (params: page_size, page_token, case_token)
+//   errors               -> { success: false, error: { type, message } }
 
-const LIST_KEYS = ['cases', 'reviews', 'data', 'items', 'results', 'edges']
-
-export function extractList(res) {
-  if (Array.isArray(res)) return res
-  if (!res || typeof res !== 'object') return []
-  const key = LIST_KEYS.find((k) => Array.isArray(res[k])) || Object.keys(res).find((k) => Array.isArray(res[k]))
-  const list = key ? res[key] : []
-  return list.map((x) => (x && typeof x === 'object' && x.node ? x.node : x))
+const REVIEW_STATUS = {
+  CREATED: 'pending', OPENED: 'pending', WORK_STARTED: 'pending', READY_FOR_REVIEW: 'pending', PENDING: 'pending',
+  CHANGES_REQUESTED: 'stuck', APPROVED: 'processed', COMPLETED: 'processed', CANCELLED: 'dismissed',
 }
 
-/** Cursor for the next page, if the response carries one. */
-export function nextCursor(res) {
-  if (!res || typeof res !== 'object') return null
-  const info = res.page_info || res.pageInfo || res.pagination || {}
-  if (info.has_next_page === false || info.hasNextPage === false) return null
-  return info.end_cursor || info.endCursor || info.next_cursor || info.nextCursor
-    || res.next_cursor || res.nextCursor || res.end_cursor || null
-}
-
-const text = (v) => {
-  if (v == null || v === '') return null
-  if (typeof v === 'object') return text(v.name ?? v.title ?? v.slug ?? v.label ?? v.token ?? null)
-  return String(v)
-}
-const pick = (o, ...keys) => {
-  for (const k of keys) {
-    const v = text(o?.[k])
-    if (v) return v
-  }
-  return null
-}
-const caseToken = (c) => pick(c, 'token', 'id')
-const caseTitle = (c) => pick(c, 'title', 'name', 'subject', 'summary', 'case_id', 'display_id')
-const caseStatus = (c) => pick(c, 'status', 'state', 'outcome')
-const caseWorkflow = (c) => pick(c, 'workflow', 'workflow_name', 'workflow_slug')
-const createdAt = (c) => pick(c, 'created_at', 'createdAt', 'opened_at')
-
-function Status({ value }) {
+function ReviewStatus({ value }) {
   if (!value) return <span className="muted">—</span>
-  const v = value.toLowerCase()
-  const kind = /(filed|complete|closed|done)/.test(v) && !/not/.test(v) ? 'processed'
-    : /(stuck|error|fail)/.test(v) ? 'stuck'
-    : /(dismiss|cancel)/.test(v) ? 'dismissed' : 'pending'
-  return <span className={`badge badge-${kind}`}><span className="dot" />{value}</span>
+  const key = String(value).toUpperCase()
+  return (
+    <span className={`badge badge-${REVIEW_STATUS[key] || 'pending'}`}>
+      <span className="dot" />{key.replace(/_/g, ' ').toLowerCase().replace(/^\w/, (c) => c.toUpperCase())}
+    </span>
+  )
 }
 
 export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
@@ -67,9 +41,14 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
     try {
       const res = await api.listCases({ workflow, first, after })
       if (mine !== reqId.current) return
-      const list = extractList(res)
-      setItems((prev) => (after && prev ? [...prev, ...list] : list))
-      setCursor(nextCursor(res))
+      const list = (res.cases || []).map((x) => x.case).filter(Boolean)
+      setItems((prev) => {
+        const all = after && prev ? [...prev, ...list] : list
+        // with a workflow filter a case can appear once per matching review: show each case once
+        return all.filter((c, i) => all.findIndex((o) => o.token === c.token) === i)
+      })
+      const info = res.page_info || {}
+      setCursor(info.has_next_page ? info.end_cursor || null : null)
     } catch (e) {
       if (mine === reqId.current) toast(e.title || 'Could not load cases', 'error', e.message)
     } finally {
@@ -96,7 +75,7 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
       <div className="card">
         <form className="toolbar" onSubmit={(e) => { e.preventDefault(); setWorkflow(workflowInput.trim()) }}>
           <label className="muted" htmlFor="wf">Workflow</label>
-          <input id="wf" className="input" style={{ width: 180 }} value={workflowInput} placeholder="(any)"
+          <input id="wf" className="input" style={{ width: 180 }} value={workflowInput} placeholder="(any), e.g. triage"
                  onChange={(e) => setWorkflowInput(e.target.value)} />
           <button className="btn btn-sm" type="submit">Apply</button>
           <span style={{ flex: 1 }} />
@@ -115,22 +94,15 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
         ) : (
           <div className="table-wrap">
             <table style={{ opacity: loading ? 0.6 : 1, transition: 'opacity .12s' }}>
-              <thead><tr><th>Case</th><th>Workflow</th><th>Status</th><th>Created</th></tr></thead>
+              <thead><tr><th>Case</th><th>Created</th><th>Updated</th></tr></thead>
               <tbody>
-                {items.map((c, i) => {
-                  const t = caseToken(c)
-                  return (
-                    <tr key={t || i} onClick={() => t && onOpen(t)}>
-                      <td>
-                        <div className="cell-main">{caseTitle(c) || t || '—'}</div>
-                        {t && caseTitle(c) && <div className="cell-sub">{t}</div>}
-                      </td>
-                      <td>{caseWorkflow(c) || <span className="muted">—</span>}</td>
-                      <td><Status value={caseStatus(c)} /></td>
-                      <td className="muted" title={createdAt(c) || ''}>{timeAgo(createdAt(c))}</td>
-                    </tr>
-                  )
-                })}
+                {items.map((c) => (
+                  <tr key={c.token} onClick={() => onOpen(c.token)}>
+                    <td><div className="cell-main"><code>{c.token}</code></div></td>
+                    <td className="muted" title={c.created_at}>{timeAgo(c.created_at)}</td>
+                    <td className="muted" title={c.updated_at}>{timeAgo(c.updated_at)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -155,23 +127,36 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
 
 function CaseDrawer({ token, onClose }) {
   const [kase, setCase] = useState(null)
-  const [reviews, setReviews] = useState(null)
   const [error, setError] = useState(null)
+  const [reviews, setReviews] = useState(null) // { items, next, error }
+  const [moreLoading, setMoreLoading] = useState(false)
 
   useEffect(() => {
     let alive = true
     setCase(null); setReviews(null); setError(null)
-    api.getCase(token).then((r) => alive && setCase(r)).catch((e) => alive && setError(e.message))
+    api.getCase(token).then((r) => alive && setCase(r.case)).catch((e) => alive && setError(e.message))
     api.listReviews({ case_token: token, page_size: 25 })
-      .then((r) => alive && setReviews(r))
-      .catch((e) => alive && setReviews({ error: e.message }))
+      .then((r) => alive && setReviews({ items: r.reviews || [], next: r.next_page_token || null }))
+      .catch((e) => alive && setReviews({ items: [], next: null, error: e.message }))
     return () => { alive = false }
   }, [token])
 
-  // some responses wrap the case: { case: {...} }
-  const c = kase && (kase.case && typeof kase.case === 'object' ? kase.case : kase)
-  const scalars = c ? Object.entries(c).filter(([, v]) => v == null || typeof v !== 'object').slice(0, 14) : []
-  const reviewList = reviews && !reviews.error ? extractList(reviews) : []
+  async function loadMoreReviews() {
+    setMoreLoading(true)
+    try {
+      const r = await api.listReviews({ case_token: token, page_size: 25, page_token: reviews.next })
+      setReviews((p) => ({ items: [...p.items, ...(r.reviews || [])], next: r.next_page_token || null }))
+    } catch (e) {
+      setReviews((p) => ({ ...p, error: e.message }))
+    } finally {
+      setMoreLoading(false)
+    }
+  }
+
+  const caseReviews = kase?.reviews || []
+  const alerts = caseReviews.flatMap((r) => (r.alerts || []).map((a) => ({ ...a, workflow: r.workflow })))
+  const decisions = caseReviews.flatMap((r) => (r.decisions || []).map((d) => ({ ...d, workflow: r.workflow })))
+  const filings = kase?.filings || []
 
   return (
     <>
@@ -180,8 +165,7 @@ function CaseDrawer({ token, onClose }) {
         <div className="drawer-head">
           <div style={{ flex: 1 }}>
             <div className="muted" style={{ fontSize: 12, marginBottom: 4 }}>Case</div>
-            <h2>{(c && caseTitle(c)) || token}</h2>
-            {c && <div style={{ marginTop: 10 }}><Status value={caseStatus(c)} /></div>}
+            <h2>{kase?.name || kase?.id || token}</h2>
           </div>
           <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="x" /></button>
         </div>
@@ -190,20 +174,69 @@ function CaseDrawer({ token, onClose }) {
           {error && <div className="errbox">{error}</div>}
           {!kase && !error && <div className="muted"><Spinner /> Loading…</div>}
 
-          {c && (
+          {kase && (
             <>
               <div className="section">
                 <h4>Details</h4>
                 <dl className="kv">
-                  {scalars.map(([k, v]) => (
-                    <FragmentRow key={k} k={k} v={v} />
-                  ))}
+                  <dt>Name</dt><dd>{kase.name || '—'}</dd>
+                  <dt>Your case id</dt><dd>{kase.id || '—'}</dd>
+                  <dt>Created</dt><dd>{formatDateTime(kase.created_at)}</dd>
+                  <dt>Updated</dt><dd>{formatDateTime(kase.updated_at)}</dd>
                 </dl>
+                <div style={{ marginTop: 12 }}><CopyField label="Case token" value={kase.token || token} /></div>
               </div>
-              <div className="section">
-                <h4>Reference</h4>
-                <CopyField label="Case token" value={caseToken(c) || token} />
-              </div>
+
+              {alerts.length > 0 && (
+                <div className="section">
+                  <h4>Alerts</h4>
+                  <ul className="timeline">
+                    {alerts.map((a, i) => (
+                      <li key={a.token || a.id || i}>
+                        <div className="cell-main">{a.rule || a.id}</div>
+                        <div className="cell-sub">
+                          {[a.id, a.workflow, a.triggered_at && formatDateTime(a.triggered_at),
+                            a.amount?.amount != null && formatMoney(a.amount.amount, a.amount.currency_code)]
+                            .filter(Boolean).join(' · ')}
+                        </div>
+                        {(a.other_info || []).map((o) => (
+                          <div className="cell-sub" key={o.label}>{o.label}: {o.value}</div>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {decisions.length > 0 && (
+                <div className="section">
+                  <h4>Decisions</h4>
+                  <ul className="timeline">
+                    {decisions.map((d, i) => (
+                      <li key={`${d.action_id}-${i}`}>
+                        <div className="cell-main">{d.action_name}: {d.choice_name}</div>
+                        <div className="cell-sub">
+                          {[d.arbiter?.name || d.arbiter?.email, d.decision_made_at && formatDateTime(d.decision_made_at)].filter(Boolean).join(' · ')}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {filings.length > 0 && (
+                <div className="section">
+                  <h4>Filings</h4>
+                  <ul className="timeline">
+                    {filings.map((f, i) => (
+                      <li key={f.token || i}>
+                        <div className="cell-main">{f.jurisdiction}{f.workflow ? ` · ${f.workflow}` : ''}</div>
+                        <div className="cell-sub">{[f.id, f.filing_institution_id].filter(Boolean).join(' · ') || f.token}</div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </>
           )}
 
@@ -211,19 +244,31 @@ function CaseDrawer({ token, onClose }) {
             <h4>Reviews</h4>
             {!reviews ? <span className="muted"><Spinner /> Loading…</span>
               : reviews.error ? <div className="errbox">{reviews.error}</div>
-              : reviewList.length === 0 ? <span className="muted">No reviews for this case yet.</span>
+              : reviews.items.length === 0 ? <span className="muted">No reviews for this case yet.</span>
               : (
-                <ul className="timeline">
-                  {reviewList.map((r, i) => (
-                    <li key={caseToken(r) || i}>
-                      <div className="cell-main">{pick(r, 'review_type_name', 'type', 'name', 'title') || caseToken(r) || 'Review'}</div>
-                      <div className="cell-sub">
-                        {[pick(r, 'status', 'state'), pick(r, 'assignee', 'assigned_to'), formatDateTime(pick(r, 'created_at', 'createdAt'))]
-                          .filter((x) => x && x !== '—').join(' · ')}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
+                <>
+                  <ul className="timeline">
+                    {reviews.items.map((r) => (
+                      <li key={r.token}>
+                        <div className="cell-main">
+                          {r.stage?.title || r.type_canonical_id || 'Review'} <ReviewStatus value={r.status} />
+                        </div>
+                        <div className="cell-sub">
+                          {[r.type_canonical_id, r.queue?.name, r.assignee?.name || r.assignee?.email,
+                            r.review_due_at && `due ${formatDateTime(r.review_due_at)}`,
+                            r.completed_at && `completed ${formatDateTime(r.completed_at)}`,
+                            r.cancellation?.reason && `cancelled: ${r.cancellation.reason}`]
+                            .filter(Boolean).join(' · ')}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {reviews.next && (
+                    <button className="btn btn-sm" onClick={loadMoreReviews} disabled={moreLoading}>
+                      {moreLoading ? <Spinner /> : null} Load more reviews
+                    </button>
+                  )}
+                </>
               )}
           </div>
 
@@ -236,23 +281,12 @@ function CaseDrawer({ token, onClose }) {
               </details>
               <details>
                 <summary className="muted" style={{ cursor: 'pointer' }}>Reviews</summary>
-                <pre className="raw">{JSON.stringify(reviews, null, 2)}</pre>
+                <pre className="raw">{JSON.stringify(reviews?.items, null, 2)}</pre>
               </details>
             </div>
           )}
         </div>
       </aside>
-    </>
-  )
-}
-
-function FragmentRow({ k, v }) {
-  const label = k.replace(/_/g, ' ')
-  const isDate = /(_at|At)$/.test(k) && v
-  return (
-    <>
-      <dt style={{ textTransform: 'capitalize' }}>{label}</dt>
-      <dd>{v == null || v === '' ? '—' : isDate ? formatDateTime(String(v)) : String(v)}</dd>
     </>
   )
 }

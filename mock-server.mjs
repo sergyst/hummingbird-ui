@@ -157,22 +157,30 @@ const server = http.createServer(async (req, res) => {
     return json(res, 201, a)
   }
 
-  // Cases / reviews: derived from processed alerts, shaped like a plausible Hummingbird response.
-  const caseOf = (a) => ({ token: a.caseToken, title: `Case for ${a.subjectName || a.externalId}`, workflow: 'triage',
-    status: a.outcome || 'opened', created_at: a.processedAt || a.createdAt, alert_id: a.externalId })
+  // Cases / reviews: derived from processed alerts, shaped like the Hummingbird API reference (2026-02-05).
+  const rv = (a) => ({ token: a.reviewToken, id: null, workflow: 'triage', stage: a.outcome === 'filed' ? 'Filing' : 'Triage',
+    status: a.outcome === 'filed' || a.outcome === 'not_filed' ? 'completed' : 'opened', created_at: a.processedAt, completed_at: null,
+    tags: a.reviewTags || [],
+    alerts: [{ id: a.externalId, token: a.alertToken, rule: a.rule, triggered_at: a.triggeredAt,
+      amount: a.amountMinor != null ? { amount: a.amountMinor, currency_code: a.currency || 'USD' } : undefined, other_info: [] }],
+    decisions: a.outcome === 'filed' ? [{ action_name: 'Triage', action_id: 'triage', choice_name: 'Escalate', choice_id: 'escalate', decision_made_at: a.processedAt, arbiter: { name: 'Sam Reviewer' } }] : [] })
+  const caseFull = (a) => ({ token: a.caseToken, id: null, name: `Case for ${a.subjectName || a.externalId}`, created_at: a.processedAt || a.createdAt,
+    updated_at: a.lastCheckedAt || a.createdAt, reviews: [rv(a)], filings: a.outcome === 'filed' ? [{ jurisdiction: 'FINCEN', workflow: 'filing', token: tok(), id: 'FIL-1' }] : [] })
   if (path === '/api/cases' && req.method === 'GET') {
-    const wf = url.searchParams.get('workflow')
     const first = Number(url.searchParams.get('first') || 25)
-    const list = alerts.filter((a) => a.caseToken).map(caseOf).filter((c) => !wf || c.workflow === wf).slice(0, first)
-    return json(res, 200, { cases: list, page_info: { has_next_page: false } })
+    const list = alerts.filter((a) => a.caseToken).map((a) => ({ cursor: a.caseToken, case: { token: a.caseToken, created_at: a.processedAt || a.createdAt, updated_at: a.lastCheckedAt || a.createdAt } }))
+    return json(res, 200, { success: true, cases: list.slice(0, first), page_info: { end_cursor: null, has_next_page: false, has_previous_page: false, start_cursor: null } })
   }
   if ((m = path.match(/^\/api\/cases\/(\w+)$/)) && req.method === 'GET') {
     const a = alerts.find((x) => x.caseToken === m[1])
-    return a ? json(res, 200, { case: caseOf(a) }) : problem(res, 404, 'Not Found', `Case ${m[1]} not found`)
+    return a ? json(res, 200, { success: true, case: caseFull(a) }) : json(res, 404, { success: false, error: { type: 'NOT_FOUND', message: `Case ${m[1]} not found` } })
   }
   if (path === '/api/reviews' && req.method === 'GET') {
     const a = alerts.find((x) => x.caseToken === url.searchParams.get('case_token'))
-    return json(res, 200, { reviews: a ? [{ token: a.reviewToken, review_type_name: 'Triage', status: a.outcome || 'opened', created_at: a.processedAt }] : [] })
+    const done = a && (a.outcome === 'filed' || a.outcome === 'not_filed')
+    return json(res, 200, { reviews: a ? [{ token: a.reviewToken, case_token: a.caseToken, status: done ? 'COMPLETED' : 'OPENED', stage: { title: done ? 'Complete' : 'Triage', token: tok() },
+      queue: { name: 'Triage queue', canonical_id: 'triage', token: tok() }, assignee: { name: 'Sam Reviewer', email: 'sam@example.com', token: tok() },
+      type_canonical_id: 'triage', created_at: a.processedAt, updated_at: a.processedAt, completed_at: done ? a.processedAt : null }] : [] })
   }
 
   if (path === '/api/scenarios' && req.method === 'GET') return json(res, 200, Object.values(SCENARIOS).map(({ key, title, summary, suspicious, txs, avg }) => ({ key, title, summary, suspicious, sendsAlert: !!evaluate(txs, avg) })))
