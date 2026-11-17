@@ -240,3 +240,6 @@ tbody tr:last-child td { border-bottom: 0; }
 .amt-in { color: var(--green); font-weight: 600; }
 .amt-out { color: var(--text); font-weight: 600; }
 @media (max-width: 960px) { .result-grid { grid-template-columns: 1fr; } }
+
+/* ------------------------------------------------------------ cases */
+.raw { background: #f6f7fb; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; margin: 8px 0 12px; overflow: auto; max-height: 320px; font-size: 12px; }

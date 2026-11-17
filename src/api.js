@@ -36,6 +36,12 @@ async function request(method, path, body) {
   return data
 }
 
+function query(params) {
+  const q = new URLSearchParams()
+  Object.entries(params).forEach(([k, v]) => { if (v != null && v !== '') q.set(k, v) })
+  return q
+}
+
 function safeJson(text) {
   try {
     return JSON.parse(text)
@@ -55,6 +61,10 @@ export const api = {
   refreshPending: () => request('POST', '/alerts/refresh-pending'),
   lifecycle: (id) => request('GET', `/alerts/${id}/lifecycle`),
   deleteAlert: (id) => request('DELETE', `/alerts/${id}`),
+  // Cases / reviews are Hummingbird's own JSON, passed through by the backend. Blank params are dropped.
+  listCases: (params = {}) => request('GET', `/cases?${query(params)}`),
+  getCase: (token) => request('GET', `/cases/${encodeURIComponent(token)}`),
+  listReviews: (params = {}) => request('GET', `/reviews?${query(params)}`),
   scenarios: () => request('GET', '/scenarios'),
   runScenario: (key) => request('POST', `/scenarios/${key}/run`),
 }

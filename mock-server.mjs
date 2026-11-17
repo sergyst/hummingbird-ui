@@ -157,6 +157,24 @@ const server = http.createServer(async (req, res) => {
     return json(res, 201, a)
   }
 
+  // Cases / reviews: derived from processed alerts, shaped like a plausible Hummingbird response.
+  const caseOf = (a) => ({ token: a.caseToken, title: `Case for ${a.subjectName || a.externalId}`, workflow: 'triage',
+    status: a.outcome || 'opened', created_at: a.processedAt || a.createdAt, alert_id: a.externalId })
+  if (path === '/api/cases' && req.method === 'GET') {
+    const wf = url.searchParams.get('workflow')
+    const first = Number(url.searchParams.get('first') || 25)
+    const list = alerts.filter((a) => a.caseToken).map(caseOf).filter((c) => !wf || c.workflow === wf).slice(0, first)
+    return json(res, 200, { cases: list, page_info: { has_next_page: false } })
+  }
+  if ((m = path.match(/^\/api\/cases\/(\w+)$/)) && req.method === 'GET') {
+    const a = alerts.find((x) => x.caseToken === m[1])
+    return a ? json(res, 200, { case: caseOf(a) }) : problem(res, 404, 'Not Found', `Case ${m[1]} not found`)
+  }
+  if (path === '/api/reviews' && req.method === 'GET') {
+    const a = alerts.find((x) => x.caseToken === url.searchParams.get('case_token'))
+    return json(res, 200, { reviews: a ? [{ token: a.reviewToken, review_type_name: 'Triage', status: a.outcome || 'opened', created_at: a.processedAt }] : [] })
+  }
+
   if (path === '/api/scenarios' && req.method === 'GET') return json(res, 200, Object.values(SCENARIOS).map(({ key, title, summary, suspicious, txs, avg }) => ({ key, title, summary, suspicious, sendsAlert: !!evaluate(txs, avg) })))
   if ((m = path.match(/^\/api\/scenarios\/(\w+)\/run$/)) && req.method === 'POST') {
     const sc = SCENARIOS[m[1]]

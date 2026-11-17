@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard'
 import Alerts from './pages/Alerts'
 import SubmitAlert from './pages/SubmitAlert'
 import Scenarios from './pages/Scenarios'
+import Cases from './pages/Cases'
 import AlertDrawer from './pages/AlertDrawer'
 
 // Minimal hash router: #/  #/alerts  #/alerts/12  #/new
@@ -43,7 +44,9 @@ export default function App() {
 
   const drawerMatch = route.match(/^\/alerts\/(\d+)$/)
   const drawerId = drawerMatch ? Number(drawerMatch[1]) : null
-  const section = route.startsWith('/alerts') ? 'alerts' : route.startsWith('/new') ? 'new' : route.startsWith('/scenarios') ? 'scenarios' : 'overview'
+  const caseMatch = route.match(/^\/cases\/([^/]+)$/)
+  const caseTokenOpen = caseMatch ? decodeURIComponent(caseMatch[1]) : null
+  const section = route.startsWith('/alerts') ? 'alerts' : route.startsWith('/cases') ? 'cases' : route.startsWith('/new') ? 'new' : route.startsWith('/scenarios') ? 'scenarios' : 'overview'
   const openAlert = (id) => goto(`/alerts/${id}`)
   const closeDrawer = () => goto(section === 'alerts' ? '/alerts' : '/')
 
@@ -62,6 +65,7 @@ export default function App() {
             <a href="#/alerts" className={section === 'alerts' ? 'active' : ''}>
               <Icon name="bell" /> Alerts {pending > 0 && <span className="count" title="Awaiting processing">{pending}</span>}
             </a>
+            <a href="#/cases" className={section === 'cases' ? 'active' : ''}><Icon name="inbox" /> Cases</a>
             <a href="#/scenarios" className={section === 'scenarios' ? 'active' : ''}><Icon name="play" /> Scenarios</a>
             <a href="#/new" className={section === 'new' ? 'active' : ''}><Icon name="plus" /> New alert</a>
           </nav>
@@ -89,6 +93,10 @@ export default function App() {
 
           {section === 'overview' && <Dashboard config={config} onOpenAlert={openAlert} goto={goto} reloadKey={reloadKey} />}
           {section === 'alerts' && <Alerts onOpenAlert={openAlert} goto={goto} reloadKey={reloadKey} onChanged={bump} />}
+          {section === 'cases' && (
+            <Cases openToken={caseTokenOpen} reloadKey={reloadKey}
+                   onOpen={(t) => goto(`/cases/${encodeURIComponent(t)}`)} onClose={() => goto('/cases')} />
+          )}
           {section === 'new' && <SubmitAlert config={config} goto={goto} onChanged={bump} />}
           {section === 'scenarios' && <Scenarios config={config} goto={goto} onChanged={bump} />}
         </main>

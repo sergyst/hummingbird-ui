@@ -123,6 +123,11 @@ export default function AlertDrawer({ id, config, onClose, onChanged }) {
                 <CopyField label="Case token" value={a.caseToken} />
                 <CopyField label="Review token" value={a.reviewToken} />
                 {!a.processingToken && !a.alertToken && !a.caseToken && <span className="muted">Nothing yet — still being processed.</span>}
+                {a.caseToken && (
+                  <a className="btn btn-sm" href={`#/cases/${encodeURIComponent(a.caseToken)}`} style={{ marginTop: 6, marginRight: 6, textDecoration: 'none' }}>
+                    <Icon name="inbox" size={14} /> View case
+                  </a>
+                )}
                 {a.caseToken && config?.dashboardUrl && (
                   <a className="btn btn-sm" href={config.dashboardUrl} target="_blank" rel="noreferrer" style={{ marginTop: 6, textDecoration: 'none' }}>
                     <Icon name="external" size={14} /> Open Hummingbird dashboard

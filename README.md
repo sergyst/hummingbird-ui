@@ -6,6 +6,10 @@ It talks to the Spring Boot server in [hummingbird-backend](https://github.com/s
 ## Pages
 * **Overview** – dashboard with stats and recent alerts.
 * **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, refresh, and submit-new-alert.
+* **Cases** – cases Hummingbird created from your alerts (`GET /api/cases`, default workflow `triage`), with "Load more"
+  paging. Click a row for the case details and its reviews (`GET /api/cases/{token}`, `GET /api/reviews?case_token=`), or use
+  **View case** in an alert's drawer. The backend passes Hummingbird's JSON through unchanged, so the page reads it
+  defensively and every case has a *Raw response* section.
 * **Scenarios** – plays a fictional customer's activity through a simulated bank monitoring system and shows what Hummingbird would (not) receive:
 
 | Scenario | Bank side | Sent to Hummingbird |
