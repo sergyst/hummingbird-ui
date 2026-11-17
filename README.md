@@ -6,8 +6,13 @@ It talks to the Spring Boot server in [hummingbird-backend](https://github.com/s
 ## Pages
 * **Overview** – dashboard with stats and recent alerts.
 * **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, refresh, and submit-new-alert.
+* **New alert** – the alert form: rule, comments, tags, subject, a transaction, plus **workflow** (default `triage`, empty = your
+  organization's initial workflow), repeatable **crypto addresses** (address, blockchain, optional id) and **other info**
+  (label/value) rows, and an example for the whitelist flow. When the backend points at a local server a **Simulate** menu
+  appears; it appends a `mock:…` instruction to the comments for [hummingbird-mock](https://github.com/sergyst/hummingbird-mock)
+  (fail, stuck, dismissed, filed, slow processing, HTTP errors, …). Real Hummingbird ignores those instructions.
 * **Cases** – cases Hummingbird created from your alerts (`GET /api/cases`, default workflow `triage`), with "Load more"
-  paging. Workflow, stage and status per case aren't in the list response, so each listed case is fetched in the
+  paging and a **Refresh** button (there is no auto-refresh on this page). Workflow, stage and status per case aren't in the list response, so each listed case is fetched in the
   background (4 at a time, cached) and its active review fills those columns in. Click a row for the case details and its reviews (`GET /api/cases/{token}`, `GET /api/reviews?case_token=`), or use
   **View case** in an alert's drawer. The backend passes Hummingbird's JSON through unchanged; the page follows the
   documented shapes (case list items are `{cursor, case:{token, created_at, updated_at}}`; the case detail has `reviews`,

@@ -1,8 +1,20 @@
 import { useState } from 'react'
 import { api } from '../api'
 import { Icon, Spinner, useToast } from '../ui'
+import { BLOCKCHAINS, SIMULATIONS, buildAlertPayload, emptyForm, isLocalBackend } from '../alertPayload'
 
 const TEMPLATES = [
+  {
+    name: 'Whitelist: address added',
+    values: {
+      rule: 'Whitelist: address added',
+      comments: 'Whitelist change requested by the customer. Reason given: new exchange deposit address.',
+      reviewTags: 'whitelist, address-added',
+      workflow: 'triage',
+      cryptoAddresses: [{ id: '', address: '0x1234567890abcdef1234567890abcdef12345678', blockchain: 'ETHEREUM' }],
+      otherInfo: [{ label: 'whitelist_action', value: 'ADDED' }],
+    },
+  },
   {
     name: 'Structuring pattern',
     values: {
@@ -41,7 +53,7 @@ const TEMPLATES = [
   },
 ]
 
-const empty = { id: '', rule: '', comments: '', reviewTags: '', subjectName: '', amount: '', currency: 'USD', direction: 'DEBIT' }
+const empty = emptyForm
 
 export default function SubmitAlert({ config, goto, onChanged }) {
   const toast = useToast()
@@ -49,24 +61,25 @@ export default function SubmitAlert({ config, goto, onChanged }) {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState(null)
   const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }))
+  const mockLocal = isLocalBackend(config?.baseUrl)
+  const sim = SIMULATIONS.find((x) => x.value === form.simulate)
+
+  // repeatable rows (crypto addresses, other info)
+  const addRow = (key, row) => setForm((f) => ({ ...f, [key]: [...f[key], row] }))
+  const removeRow = (key, i) => setForm((f) => ({ ...f, [key]: f[key].filter((_, j) => j !== i) }))
+  const setRow = (key, i, field) => (e) =>
+    setForm((f) => ({ ...f, [key]: f[key].map((r, j) => (j === i ? { ...r, [field]: e.target.value } : r)) }))
+  const pickSimulation = (e) => {
+    const next = SIMULATIONS.find((x) => x.value === e.target.value)
+    setForm((f) => ({ ...f, simulate: e.target.value, simulateArg: next?.arg?.initial ?? '' }))
+  }
 
   async function submit(e) {
     e.preventDefault()
     setBusy(true)
     setError(null)
     try {
-      const amountMinor = form.amount.trim() === '' ? null : Math.round(parseFloat(form.amount) * 100)
-      if (amountMinor != null && (Number.isNaN(amountMinor) || amountMinor < 0)) throw new Error('Amount must be a positive number')
-      const created = await api.submitAlert({
-        id: form.id.trim() || null,
-        rule: form.rule.trim(),
-        comments: form.comments.trim() || null,
-        reviewTags: form.reviewTags.split(',').map((t) => t.trim()).filter(Boolean),
-        subjectName: form.subjectName.trim() || null,
-        amountMinor,
-        currency: amountMinor != null ? form.currency.trim() || 'USD' : null,
-        direction: form.direction,
-      })
+      const created = await api.submitAlert(buildAlertPayload(form))
       toast('Alert accepted by Hummingbird', 'success', `${created.externalId} is pending processing (usually under 5 minutes).`)
       onChanged()
       goto(`/alerts/${created.id}`)
@@ -134,6 +147,79 @@ export default function SubmitAlert({ config, goto, onChanged }) {
               <label htmlFor="currency">Currency</label>
               <input id="currency" className="input" maxLength={8} value={form.currency} onChange={set('currency')} />
             </div>
+            <div className="field full">
+              <label htmlFor="workflow">Workflow</label>
+              <input id="workflow" className="input" value={form.workflow} onChange={set('workflow')} placeholder="triage" />
+              <small>Which workflow the alert starts in. Leave empty to use your organization’s initial workflow.</small>
+            </div>
+
+            <div className="field full">
+              <label>Crypto addresses</label>
+              <div className="repeat">
+                {form.cryptoAddresses.map((c, i) => (
+                  <div className="repeat-row three" key={i}>
+                    <input className="input" aria-label={`Crypto address ${i + 1}`} value={c.address} onChange={setRow('cryptoAddresses', i, 'address')}
+                           placeholder="0x…" maxLength={512} />
+                    <select className="select" aria-label={`Blockchain ${i + 1}`} value={c.blockchain} onChange={setRow('cryptoAddresses', i, 'blockchain')}>
+                      {BLOCKCHAINS.map((b) => <option key={b} value={b}>{b}</option>)}
+                    </select>
+                    <input className="input" aria-label={`Address id ${i + 1}`} value={c.id} onChange={setRow('cryptoAddresses', i, 'id')}
+                           placeholder="ID (optional)" maxLength={256} />
+                    <button type="button" className="icon-btn" aria-label={`Remove crypto address ${i + 1}`} onClick={() => removeRow('cryptoAddresses', i)}>
+                      <Icon name="x" size={16} />
+                    </button>
+                  </div>
+                ))}
+                <div>
+                  <button type="button" className="btn btn-sm" onClick={() => addRow('cryptoAddresses', { id: '', address: '', blockchain: 'ETHEREUM' })}>
+                    <Icon name="plus" size={14} /> Add crypto address
+                  </button>
+                </div>
+              </div>
+              <small>Sent as <code>data.crypto_addresses</code> and referenced from the alert.</small>
+            </div>
+
+            <div className="field full">
+              <label>Other info</label>
+              <div className="repeat">
+                {form.otherInfo.map((o, i) => (
+                  <div className="repeat-row two" key={i}>
+                    <input className="input" aria-label={`Other info label ${i + 1}`} value={o.label} onChange={setRow('otherInfo', i, 'label')}
+                           placeholder="label, e.g. whitelist_action" maxLength={256} />
+                    <input className="input" aria-label={`Other info value ${i + 1}`} value={o.value} onChange={setRow('otherInfo', i, 'value')}
+                           placeholder="value, e.g. ADDED" maxLength={4000} />
+                    <button type="button" className="icon-btn" aria-label={`Remove other info ${i + 1}`} onClick={() => removeRow('otherInfo', i)}>
+                      <Icon name="x" size={16} />
+                    </button>
+                  </div>
+                ))}
+                <div>
+                  <button type="button" className="btn btn-sm" onClick={() => addRow('otherInfo', { label: '', value: '' })}>
+                    <Icon name="plus" size={14} /> Add label / value
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {mockLocal && (
+              <div className="field full">
+                <div className="sim">
+                  <label htmlFor="simulate">Simulate (mock server only)</label>
+                  <select id="simulate" className="select" value={form.simulate} onChange={pickSimulation}>
+                    {SIMULATIONS.map((x) => <option key={x.value} value={x.value}>{x.label}</option>)}
+                  </select>
+                  {sim?.arg && (
+                    <input className="input" style={{ marginTop: 8 }} aria-label={sim.arg.label} value={form.simulateArg}
+                           onChange={set('simulateArg')} placeholder={sim.arg.placeholder} />
+                  )}
+                  <small>
+                    Appends an instruction to the comments for <code>hummingbird-mock</code> to follow
+                    {sim?.directive && (() => { try { return <> — will add <code>{sim.directive(form.simulateArg)}</code></> } catch { return null } })()}.
+                    Real Hummingbird ignores it, so only use it against the mock.
+                  </small>
+                </div>
+              </div>
+            )}
           </div>
 
           {error && (
