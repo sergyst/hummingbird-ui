@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
-import { EmptyState, Icon, StateBadge, formatDuration, timeAgo, STATES, STATE_META } from '../ui'
+import { EmptyState, Icon, Spinner, StateBadge, formatDuration, timeAgo, STATES, STATE_META } from '../ui'
 
 function Kpi({ icon, tone, value, label }) {
   const tones = {
@@ -19,25 +19,26 @@ function Kpi({ icon, tone, value, label }) {
   )
 }
 
-export default function Dashboard({ config, onOpenAlert, goto, reloadKey }) {
+export default function Dashboard({ config, onOpenAlert, goto, reloadKey, onChanged }) {
   const [stats, setStats] = useState(null)
   const [recent, setRecent] = useState(null)
+  const [loading, setLoading] = useState(false)
 
   const load = useCallback(async () => {
+    setLoading(true)
     try {
       const [s, r] = await Promise.all([api.stats(), api.listAlerts({ size: 6 })])
       setStats(s)
       setRecent(r.items)
     } catch {
       /* the global banner already explains connectivity problems */
+    } finally {
+      setLoading(false)
     }
   }, [])
 
-  useEffect(() => {
-    load()
-    const t = setInterval(load, 10000)
-    return () => clearInterval(t)
-  }, [load, reloadKey])
+  // Loaded on mount and when a refresh is requested (reloadKey); it does not poll.
+  useEffect(() => { load() }, [load, reloadKey])
 
   const by = stats?.byState || {}
   const needAttention = (by.STUCK || 0) + (by.ERROR || 0)
@@ -51,6 +52,9 @@ export default function Dashboard({ config, onOpenAlert, goto, reloadKey }) {
           <p>How alerts you send to Hummingbird are being processed.</p>
         </div>
         <div className="actions">
+          <button className="btn" onClick={() => onChanged()} disabled={loading} title="Reload the overview">
+            {loading ? <Spinner /> : <Icon name="refresh" size={16} />} Refresh
+          </button>
           <button className="btn btn-primary" onClick={() => goto('/new')}><Icon name="plus" size={16} /> New alert</button>
         </div>
       </div>

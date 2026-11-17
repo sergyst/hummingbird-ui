@@ -4,7 +4,7 @@ React (Vite) console for working with **alerts** in the [Hummingbird](https://do
 It talks to the Spring Boot server in [hummingbird-backend](https://github.com/sergyst/hummingbird-backend) via `/api`.
 
 ## Pages
-* **Overview** – dashboard with stats and recent alerts.
+* **Overview** – dashboard with stats and recent alerts. Nothing refreshes on its own (the pending count and backend status in the sidebar included): use **Refresh** on the page or in the sidebar. Only the Scenarios page polls, while a scenario is running.
 * **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, and submit-new-alert. It does not refresh itself: **Refresh** reloads the list and counts, and **Check pending** asks Hummingbird about alerts that are still pending.
 * **New alert** – the alert form: rule, comments, tags, subject, a transaction, plus **workflow** (default `triage`, empty = your
   organization's initial workflow), repeatable **crypto addresses** (address, blockchain, optional id) and **other info**

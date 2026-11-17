@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { api } from './api'
-import { Icon, ToastProvider } from './ui'
+import { Icon, Spinner, ToastProvider } from './ui'
 import Dashboard from './pages/Dashboard'
 import Alerts from './pages/Alerts'
 import SubmitAlert from './pages/SubmitAlert'
@@ -31,6 +31,7 @@ export default function App() {
   const [offline, setOffline] = useState(false)
   const [reloadKey, setReloadKey] = useState(0)
   const [pending, setPending] = useState(0)
+  const [checking, setChecking] = useState(false)
 
   const bump = useCallback(() => setReloadKey((k) => k + 1), [])
 
@@ -38,12 +39,16 @@ export default function App() {
     api.config().then((c) => { setConfig(c); setOffline(false) }).catch(() => setOffline(true))
   }, [])
 
+  // The pending count / backend status is read on load and whenever something asks for a refresh (reloadKey);
+  // it does not poll.
   useEffect(() => {
     let alive = true
-    const tick = () => api.stats().then((s) => alive && (setPending(s.byState.PENDING || 0), setOffline(false))).catch(() => alive && setOffline(true))
-    tick()
-    const t = setInterval(tick, 10000)
-    return () => { alive = false; clearInterval(t) }
+    setChecking(true)
+    api.stats()
+      .then((st) => { if (alive) { setPending(st.byState.PENDING || 0); setOffline(false) } })
+      .catch(() => { if (alive) setOffline(true) })
+      .finally(() => { if (alive) setChecking(false) })
+    return () => { alive = false }
   }, [reloadKey])
 
   const drawerMatch = route.match(/^\/alerts\/(\d+)$/)
@@ -72,6 +77,9 @@ export default function App() {
             <a href="#/cases" className={section === 'cases' ? 'active' : ''}><Icon name="inbox" /> Cases</a>
             <a href="#/scenarios" className={section === 'scenarios' ? 'active' : ''}><Icon name="play" /> Scenarios</a>
             <a href="#/new" className={section === 'new' ? 'active' : ''}><Icon name="plus" /> New alert</a>
+            <button type="button" onClick={bump} disabled={checking} title="Reload this page, the pending count and the backend status">
+              {checking ? <Spinner /> : <Icon name="refresh" />} Refresh
+            </button>
           </nav>
           <div className="sidebar-foot">
             {config && (
@@ -95,7 +103,7 @@ export default function App() {
             </div>
           )}
 
-          {section === 'overview' && <Dashboard config={config} onOpenAlert={openAlert} goto={goto} reloadKey={reloadKey} />}
+          {section === 'overview' && <Dashboard config={config} onOpenAlert={openAlert} goto={goto} reloadKey={reloadKey} onChanged={bump} />}
           {section === 'alerts' && <Alerts onOpenAlert={openAlert} goto={goto} reloadKey={reloadKey} onChanged={bump} />}
           {section === 'cases' && (
             <Cases openToken={caseTokenOpen} reloadKey={reloadKey}
