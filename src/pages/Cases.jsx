@@ -3,6 +3,8 @@ import { api } from '../api'
 import { CopyField, EmptyState, Icon, Spinner, formatDateTime, formatMoney, timeAgo, useToast } from '../ui'
 
 // Shapes below follow the Hummingbird API reference (apiVersion 2026-02-05); the backend passes them through unchanged.
+//   GET /api/cases/summaries -> { cases: [{ token, name, createdAt, updatedAt, workflow, stage, status, reviewCount, error }],
+//                             hasNextPage, endCursor }   (backend-built from the two calls below; params: first, after, workflow, refresh)
 //   GET /cases           -> { success, cases: [{ cursor, case: { token, created_at, updated_at } }],
 //                             page_info: { end_cursor, has_next_page, ... } }          (params: first, after, workflow)
 //   GET /cases/{token}   -> { success, case: { token, id, name, created_at, updated_at, reviews: [...], filings: [...] } }
@@ -25,18 +27,6 @@ function ReviewStatus({ value }) {
   )
 }
 
-const DONE = new Set(['COMPLETED', 'CANCELLED', 'APPROVED'])
-
-/** The review that best describes where a case stands: the first still-active one, else the latest. */
-function summarize(kase) {
-  const reviews = kase?.reviews || []
-  if (reviews.length === 0) return null
-  const active = reviews.find((r) => !DONE.has(String(r.status || '').toUpperCase()))
-  return { review: active || reviews[reviews.length - 1], count: reviews.length, name: kase.name }
-}
-
-const CONCURRENCY = 4
-
 export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
   const toast = useToast()
   const [workflow, setWorkflow] = useState('triage')
@@ -46,53 +36,22 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
   const [cursor, setCursor] = useState(null)
   const [loading, setLoading] = useState(false)
   const reqId = useRef(0)
-  const [details, setDetails] = useState({}) // token -> { key, case } | { key, error }
-  const inFlight = useRef(new Set())
 
-  // The list response has no workflow/status, so fetch each listed case (a few at a time) and cache it.
-  // The cache key includes updated_at, so a case that changed is re-fetched on the next refresh.
-  useEffect(() => {
-    if (!items) return
-    const todo = items.filter((c) => {
-      const key = `${c.token}|${c.updated_at}`
-      return details[c.token]?.key !== key && !inFlight.current.has(key)
-    })
-    if (todo.length === 0) return
-    let alive = true
-    const queue = [...todo]
-    const worker = async () => {
-      while (alive && queue.length) {
-        const c = queue.shift()
-        const key = `${c.token}|${c.updated_at}`
-        inFlight.current.add(key)
-        try {
-          const r = await api.getCase(c.token)
-          if (alive) setDetails((d) => ({ ...d, [c.token]: { key, case: r.case } }))
-        } catch (e) {
-          if (alive) setDetails((d) => ({ ...d, [c.token]: { key, error: e.message } }))
-        } finally {
-          inFlight.current.delete(key)
-        }
-      }
-    }
-    for (let i = 0; i < Math.min(CONCURRENCY, queue.length); i++) worker()
-    return () => { alive = false }
-  }, [items]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const load = useCallback(async (after = null) => {
+  // GET /api/cases/summaries: the backend adds workflow / stage / status to each case (the list has none) and caches
+  // them until a case changes. `refresh` makes it skip that cache.
+  const load = useCallback(async ({ after = null, refresh = false } = {}) => {
     const mine = ++reqId.current
     setLoading(true)
     try {
-      const res = await api.listCases({ workflow, first, after })
+      const res = await api.listCaseSummaries({ workflow, first, after, refresh: refresh ? 'true' : null })
       if (mine !== reqId.current) return
-      const list = (res.cases || []).map((x) => x.case).filter(Boolean)
+      const list = res.cases || []
       setItems((prev) => {
         const all = after && prev ? [...prev, ...list] : list
         // with a workflow filter a case can appear once per matching review: show each case once
         return all.filter((c, i) => all.findIndex((o) => o.token === c.token) === i)
       })
-      const info = res.page_info || {}
-      setCursor(info.has_next_page ? info.end_cursor || null : null)
+      setCursor(res.hasNextPage ? res.endCursor || null : null)
     } catch (e) {
       if (mine === reqId.current) toast(e.title || 'Could not load cases', 'error', e.message)
     } finally {
@@ -110,7 +69,7 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
           <p>Cases Hummingbird created from your alerts, read live from the API.</p>
         </div>
         <div className="actions">
-          <button className="btn" onClick={() => load()} disabled={loading}>
+          <button className="btn" onClick={() => load({ refresh: true })} disabled={loading}>
             {loading ? <Spinner /> : <Icon name="refresh" size={16} />} Refresh
           </button>
         </div>
@@ -140,29 +99,24 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
             <table style={{ opacity: loading ? 0.6 : 1, transition: 'opacity .12s' }}>
               <thead><tr><th>Case</th><th>Workflow</th><th>Stage</th><th>Status</th><th>Created</th><th>Updated</th></tr></thead>
               <tbody>
-                {items.map((c) => {
-                  const d = details[c.token]
-                  const sum = d?.case ? summarize(d.case) : null
-                  const pending = !d
-                  return (
-                    <tr key={c.token} onClick={() => onOpen(c.token)}>
-                      <td>
-                        <div className="cell-main">{d?.case?.name || <code>{c.token}</code>}</div>
-                        {d?.case?.name && <div className="cell-sub"><code>{c.token}</code></div>}
-                      </td>
-                      <td>{pending ? <Spinner /> : sum?.review?.workflow || <span className="muted">—</span>}
-                        {sum && sum.count > 1 && <span className="muted" title={`${sum.count} reviews`}> · {sum.count} reviews</span>}
-                      </td>
-                      <td>{pending ? '' : sum?.review?.stage || <span className="muted">—</span>}</td>
-                      <td>
-                        {pending ? '' : d.error ? <span className="muted" title={d.error}>unavailable</span>
-                          : sum ? <ReviewStatus value={sum.review.status} /> : <span className="muted">no review yet</span>}
-                      </td>
-                      <td className="muted" title={c.created_at}>{timeAgo(c.created_at)}</td>
-                      <td className="muted" title={c.updated_at}>{timeAgo(c.updated_at)}</td>
-                    </tr>
-                  )
-                })}
+                {items.map((c) => (
+                  <tr key={c.token} onClick={() => onOpen(c.token)}>
+                    <td>
+                      <div className="cell-main">{c.name || <code>{c.token}</code>}</div>
+                      {c.name && <div className="cell-sub"><code>{c.token}</code></div>}
+                    </td>
+                    <td>{c.workflow || <span className="muted">—</span>}
+                      {c.reviewCount > 1 && <span className="muted" title={`${c.reviewCount} reviews`}> · {c.reviewCount} reviews</span>}
+                    </td>
+                    <td>{c.stage || <span className="muted">—</span>}</td>
+                    <td>
+                      {c.error ? <span className="muted" title={c.error}>unavailable</span>
+                        : c.status ? <ReviewStatus value={c.status} /> : <span className="muted">no review yet</span>}
+                    </td>
+                    <td className="muted" title={c.createdAt}>{timeAgo(c.createdAt)}</td>
+                    <td className="muted" title={c.updatedAt}>{timeAgo(c.updatedAt)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
@@ -172,7 +126,7 @@ export default function Cases({ openToken, onOpen, onClose, reloadKey }) {
           <div className="pager">
             <span>{items.length} loaded</span>
             <span className="actions">
-              <button className="btn btn-sm" disabled={!cursor || loading} onClick={() => load(cursor)}>
+              <button className="btn btn-sm" disabled={!cursor || loading} onClick={() => load({ after: cursor })}>
                 Load more <Icon name="chevR" size={15} />
               </button>
             </span>

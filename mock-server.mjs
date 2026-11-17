@@ -171,6 +171,15 @@ const server = http.createServer(async (req, res) => {
     const list = alerts.filter((a) => a.caseToken).map((a) => ({ cursor: a.caseToken, case: { token: a.caseToken, created_at: a.processedAt || a.createdAt, updated_at: a.lastCheckedAt || a.createdAt } }))
     return json(res, 200, { success: true, cases: list.slice(0, first), page_info: { end_cursor: null, has_next_page: false, has_previous_page: false, start_cursor: null } })
   }
+  if (path === '/api/cases/summaries' && req.method === 'GET') {
+    const first = Number(url.searchParams.get('first') || 25)
+    const list = alerts.filter((a) => a.caseToken).map((a) => {
+      const r = rv(a)
+      return { token: a.caseToken, name: `Case for ${a.subjectName || a.externalId}`, createdAt: a.processedAt || a.createdAt,
+        updatedAt: a.lastCheckedAt || a.createdAt, workflow: r.workflow, stage: r.stage, status: r.status.toUpperCase(), reviewCount: 1, error: null }
+    })
+    return json(res, 200, { cases: list.slice(0, first), hasNextPage: false, endCursor: null })
+  }
   if ((m = path.match(/^\/api\/cases\/(\w+)$/)) && req.method === 'GET') {
     const a = alerts.find((x) => x.caseToken === m[1])
     return a ? json(res, 200, { success: true, case: caseFull(a) }) : json(res, 404, { success: false, error: { type: 'NOT_FOUND', message: `Case ${m[1]} not found` } })

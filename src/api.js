@@ -63,6 +63,8 @@ export const api = {
   deleteAlert: (id) => request('DELETE', `/alerts/${id}`),
   // Cases / reviews are Hummingbird's own JSON, passed through by the backend. Blank params are dropped.
   listCases: (params = {}) => request('GET', `/cases?${query(params)}`),
+  // Cases with workflow / stage / status filled in by the backend. Pass refresh: 'true' to bypass its cache.
+  listCaseSummaries: (params = {}) => request('GET', `/cases/summaries?${query(params)}`),
   getCase: (token) => request('GET', `/cases/${encodeURIComponent(token)}`),
   listReviews: (params = {}) => request('GET', `/reviews?${query(params)}`),
   scenarios: () => request('GET', '/scenarios'),
