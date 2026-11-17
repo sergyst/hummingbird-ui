@@ -95,7 +95,7 @@ export default function SubmitAlert({ config, goto, onChanged }) {
       <div className="page-head">
         <div>
           <h1>New alert</h1>
-          <p>Sends an alert import to the {config?.sandbox ? 'Hummingbird sandbox' : 'Hummingbird API'}.</p>
+          <p>Sends an alert import to the {config?.environment === 'local' ? 'local mock server' : config?.sandbox ? 'Hummingbird sandbox' : 'Hummingbird API'}.</p>
         </div>
       </div>
 

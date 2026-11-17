@@ -127,7 +127,7 @@ const server = http.createServer(async (req, res) => {
   const payload = body ? JSON.parse(body) : null
   let m
 
-  if (path === '/api/config') return json(res, 200, { baseUrl: 'https://api.sandbox.hummingbird.co', sandbox: true, credentialsConfigured: true, webhookSecretConfigured: false, apiVersion: '2026-02-05', dashboardUrl: 'https://sandbox.hummingbird.co' })
+  if (path === '/api/config') return json(res, 200, { baseUrl: 'https://api.sandbox.hummingbird.co', sandbox: true, environment: 'sandbox', credentialsConfigured: true, webhookSecretConfigured: false, apiVersion: '2026-02-05', dashboardUrl: 'https://sandbox.hummingbird.co' })
   if (path === '/api/stats') return json(res, 200, stats())
 
   if (path === '/api/alerts' && req.method === 'GET') {

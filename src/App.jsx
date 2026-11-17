@@ -8,6 +8,10 @@ import Scenarios from './pages/Scenarios'
 import Cases from './pages/Cases'
 import AlertDrawer from './pages/AlertDrawer'
 
+const ENV_LABEL = { local: 'Local mock', sandbox: 'Sandbox', production: 'Production' }
+// older backends only send `sandbox: true|false`
+const envOf = (config) => config.environment || (config.sandbox ? 'sandbox' : 'production')
+
 // Minimal hash router: #/  #/alerts  #/alerts/12  #/new
 function useRoute() {
   const read = () => window.location.hash.replace(/^#/, '') || '/'
@@ -71,9 +75,9 @@ export default function App() {
           </nav>
           <div className="sidebar-foot">
             {config && (
-              <span className={`env-pill ${config.sandbox ? 'env-sandbox' : 'env-prod'}`}>
+              <span className={`env-pill ${envOf(config) === 'production' ? 'env-prod' : 'env-sandbox'}`}>
                 <span className="dot" style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor' }} />
-                {config.sandbox ? 'Sandbox' : 'Production'}
+                {ENV_LABEL[envOf(config)]}
               </span>
             )}
             <div style={{ marginTop: 8 }}>API version {config?.apiVersion || '—'}</div>
