@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { api } from '../api'
 import { Icon, OutcomeBadge, Spinner, StateBadge, formatDateTime, formatMoney, useToast } from '../ui'
 
@@ -43,27 +43,26 @@ export default function Scenarios({ goto, onChanged, config }) {
   const [running, setRunning] = useState(null)
   const [result, setResult] = useState(null)
   const [alert, setAlert] = useState(null) // live copy of the alert sent by the scenario
-  const timer = useRef(null)
+  const [refreshing, setRefreshing] = useState(false)
 
   useEffect(() => {
     api.scenarios().then(setList).catch((e) => toast('Could not load scenarios', 'error', e.message))
   }, [toast])
 
-  // follow the alert created by the scenario until it reaches a final outcome
-  useEffect(() => {
-    clearInterval(timer.current)
-    if (!result?.alert) { setAlert(null); return undefined }
-    setAlert(result.alert)
-    const tick = async () => {
-      try {
-        const d = await api.getAlert(result.alert.id)
-        setAlert(d.alert)
-        if (FINAL.includes(d.alert.outcome) && (d.alert.outcome !== 'filed' || d.alert.filingStatus)) clearInterval(timer.current)
-      } catch { /* alert may have been removed */ }
+  // Re-read the alert sent by the scenario. Nothing polls: it runs when a scenario finishes and when Refresh is clicked.
+  const reloadAlert = useCallback(async (id) => {
+    setRefreshing(true)
+    try {
+      const d = await api.getAlert(id)
+      setAlert(d.alert)
+    } catch (e) {
+      toast('Could not refresh the alert', 'error', e.message)
+    } finally {
+      setRefreshing(false)
     }
-    timer.current = setInterval(tick, 4000)
-    return () => clearInterval(timer.current)
-  }, [result])
+  }, [toast])
+
+  useEffect(() => { setAlert(result?.alert || null) }, [result])
 
   async function run(key) {
     setRunning(key)
@@ -174,11 +173,14 @@ export default function Scenarios({ goto, onChanged, config }) {
                       </li>
                     ))}
                   </ul>
-                  <div style={{ marginTop: 18 }}>
+                  <div style={{ marginTop: 18, display: 'flex', gap: 8 }}>
+                    <button className="btn btn-sm" onClick={() => reloadAlert(alert.id)} disabled={refreshing}>
+                      {refreshing ? <Spinner /> : <Icon name="refresh" size={15} />} Refresh
+                    </button>
                     <button className="btn btn-sm" onClick={() => goto(`/alerts/${alert.id}`)}>Open alert details</button>
                   </div>
                   <p className="muted" style={{ fontSize: 12.5, marginTop: 12, lineHeight: 1.5 }}>
-                    The investigator’s decision and any filing happen inside Hummingbird. This page updates when the webhooks arrive, or when polling picks the change up.
+                    The investigator’s decision and any filing happen inside Hummingbird. The backend picks up changes from webhooks or its own polling; click Refresh to see them here.
                   </p>
                 </>
               )}
