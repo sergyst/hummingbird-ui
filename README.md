@@ -5,7 +5,7 @@ It talks to the Spring Boot server in [hummingbird-backend](https://github.com/s
 
 ## Pages
 * **Overview** – dashboard with stats and recent alerts.
-* **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, refresh, and submit-new-alert.
+* **Alerts** – table of submitted alerts with state and case outcome (`opened`, `escalated`, `filed`, `not_filed`, `dismissed`), filters, search, and submit-new-alert. It does not refresh itself: **Refresh** reloads the list and counts, and **Check pending** asks Hummingbird about alerts that are still pending.
 * **New alert** – the alert form: rule, comments, tags, subject, a transaction, plus **workflow** (default `triage`, empty = your
   organization's initial workflow), repeatable **crypto addresses** (address, blockchain, optional id) and **other info**
   (label/value) rows, and an example for the whitelist flow. When the backend points at a local server a **Simulate** menu

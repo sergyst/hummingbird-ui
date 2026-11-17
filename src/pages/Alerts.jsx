@@ -42,12 +42,6 @@ export default function Alerts({ onOpenAlert, goto, reloadKey, onChanged }) {
 
   useEffect(() => { load() }, [load, reloadKey])
 
-  // keep pending alerts fresh without user action
-  useEffect(() => {
-    const t = setInterval(() => load(true), 8000)
-    return () => clearInterval(t)
-  }, [load])
-
   async function refreshPending() {
     setRefreshing(true)
     try {
@@ -77,6 +71,9 @@ export default function Alerts({ onOpenAlert, goto, reloadKey, onChanged }) {
           <p>Everything sent to Hummingbird from this console, plus alerts reported by webhook.</p>
         </div>
         <div className="actions">
+          <button className="btn" onClick={() => onChanged()} disabled={loading} title="Reload the list and counts">
+            {loading ? <Spinner /> : <Icon name="refresh" size={16} />} Refresh
+          </button>
           <button className="btn" onClick={refreshPending} disabled={refreshing || !(counts.PENDING > 0)}>
             {refreshing ? <Spinner /> : <Icon name="refresh" size={16} />} Check pending
           </button>
