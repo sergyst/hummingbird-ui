@@ -213,7 +213,7 @@ export default function SubmitAlert({ config, goto, onChanged }) {
                            onChange={set('simulateArg')} placeholder={sim.arg.placeholder} />
                   )}
                   <small>
-                    Appends an instruction to the comments for <code>hummingbird-mock</code> to follow
+                    Appends an instruction to the comments for the embedded mock to follow
                     {sim?.directive && (() => { try { return <> — will add <code>{sim.directive(form.simulateArg)}</code></> } catch { return null } })()}.
                     Real Hummingbird ignores it, so only use it against the mock.
                   </small>

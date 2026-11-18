@@ -3,7 +3,7 @@
 // Allowed values of data.crypto_addresses[].blockchain in the Hummingbird API reference.
 export const BLOCKCHAINS = ['ETHEREUM', 'BITCOIN', 'BITCOIN_CASH', 'LITECOIN', 'RIPPLE', 'CARDANO', 'EOS', 'MONERO', 'OTHER', 'UNKNOWN']
 
-// Instructions for hummingbird-mock (GET /mock/directives). They are appended to the alert's comments.
+// Instructions for the backend's embedded mock (GET /hummingbird-mock/mock/directives). They are appended to the alert's comments.
 export const SIMULATIONS = [
   { value: '', label: 'None (normal processing)' },
   { value: 'fail', label: 'Fail the alert (state: error)', directive: () => 'mock:fail' },

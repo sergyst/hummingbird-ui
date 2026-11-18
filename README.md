@@ -9,7 +9,8 @@ It talks to the Spring Boot server in [hummingbird-backend](https://github.com/s
 * **New alert** – the alert form: rule, comments, tags, subject, a transaction, plus **workflow** (default `triage`, empty = your
   organization's initial workflow), repeatable **crypto addresses** (address, blockchain, optional id) and **other info**
   (label/value) rows, and an example for the whitelist flow. When the backend points at a local server a **Simulate** menu
-  appears; it appends a `mock:…` instruction to the comments for [hummingbird-mock](https://github.com/sergyst/hummingbird-mock)
+  appears; it appends a `mock:…` instruction to the comments for the backend's embedded mock (`mock` profile, see the
+  [hummingbird-backend](https://github.com/sergyst/hummingbird-backend) README)
   (fail, stuck, dismissed, filed, slow processing, HTTP errors, …). Real Hummingbird ignores those instructions.
 * **Cases** – cases Hummingbird created from your alerts (`GET /api/cases`, default workflow `triage`), with "Load more"
   paging and a **Refresh** button (there is no auto-refresh on this page).
@@ -35,6 +36,7 @@ npm install
 npm run dev        # http://localhost:5173, proxies /api -> http://localhost:8080
 ```
 Point the proxy elsewhere with `API_TARGET=http://host:port npm run dev`.
+To try it without Hummingbird credentials, run the backend with its `mock` profile (the simulated Hummingbird is built in).
 
 ### Without Java or credentials
 ```bash
